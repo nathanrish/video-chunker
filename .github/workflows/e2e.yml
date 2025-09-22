@@ -1,0 +1,162 @@
+name: E2E Split + Transcribe
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Optional direct URL to a video file (.mp4, .mkv, etc.)"
+        required: false
+        type: string
+      asset_pattern:
+        description: "Optional glob pattern to fetch from the latest release (e.g., *.mp4)"
+        required: false
+        type: string
+      chunk_duration:
+        description: "Chunk duration in seconds"
+        required: false
+        default: "60"
+        type: string
+      chunks_per_folder:
+        description: "Chunks per folder"
+        required: false
+        default: "10"
+        type: string
+      model:
+        description: "faster-whisper model (tiny, base, small, medium, large)"
+        required: false
+        default: "small"
+        type: string
+      language:
+        description: "Language code (e.g., en) or leave blank for auto"
+        required: false
+        default: "en"
+        type: string
+      use_llm:
+        description: "Use OpenAI to refine minutes/snapshot (requires OPENAI_API_KEY secret)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+  release:
+    types: [published]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg curl
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare folders
+        run: |
+          mkdir -p input
+          mkdir -p output
+
+      - name: Determine inputs
+        id: inputs
+        run: |
+          echo "video_url=${{ github.event.inputs.video_url }}" >> $GITHUB_OUTPUT
+          echo "asset_pattern=${{ github.event.inputs.asset_pattern }}" >> $GITHUB_OUTPUT
+          echo "chunk_duration=${{ github.event.inputs.chunk_duration || '60' }}" >> $GITHUB_OUTPUT
+          echo "chunks_per_folder=${{ github.event.inputs.chunks_per_folder || '10' }}" >> $GITHUB_OUTPUT
+          echo "model=${{ github.event.inputs.model || 'small' }}" >> $GITHUB_OUTPUT
+          echo "language=${{ github.event.inputs.language || 'en' }}" >> $GITHUB_OUTPUT
+          echo "use_llm=${{ github.event.inputs.use_llm || 'false' }}" >> $GITHUB_OUTPUT
+
+      - name: Download video via URL (if provided)
+        if: ${{ steps.inputs.outputs.video_url != '' }}
+        run: |
+          fname=$(basename "${{ steps.inputs.outputs.video_url }}")
+          echo "Downloading $fname"
+          curl -L "${{ steps.inputs.outputs.video_url }}" -o "input/$fname"
+
+      - name: Download latest release asset (if asset_pattern provided and no URL)
+        if: ${{ steps.inputs.outputs.video_url == '' && steps.inputs.outputs.asset_pattern != '' }}
+        uses: robinraju/release-downloader@v1.11
+        with:
+          repository: ${{ github.repository }}
+          latest: true
+          fileName: ${{ steps.inputs.outputs.asset_pattern }}
+          out-file-path: input
+          extract: false
+
+      - name: Download all assets from this release (release event)
+        if: ${{ github.event_name == 'release' }}
+        uses: robinraju/release-downloader@v1.11
+        with:
+          repository: ${{ github.repository }}
+          tag: ${{ github.event.release.tag_name }}
+          out-file-path: input
+          extract: false
+
+      - name: List input files
+        run: |
+          ls -lah input || true
+
+      - name: Verify at least one video exists in input
+        run: |
+          python - << 'PY'
+          import sys, os, pathlib
+          exts={'.mp4','.avi','.mkv','.mov','.wmv','.flv','.webm','.m4v','.mpg','.mpeg'}
+          p=pathlib.Path('input')
+          vids=[x for x in p.iterdir() if x.is_file() and x.suffix.lower() in exts]
+          if not vids:
+            print('No video found in input/. Provide a video_url or release asset.'); sys.exit(1)
+          print('Found videos:', [v.name for v in vids])
+          PY
+
+      - name: Run splitter
+        run: |
+          python video_splitter.py -d "${{ steps.inputs.outputs.chunk_duration }}" -c "${{ steps.inputs.outputs.chunks_per_folder }}"
+
+      - name: Determine chunks directory name
+        id: chunksdir
+        run: |
+          python - << 'PY'
+          import os, pathlib
+          out=pathlib.Path('output')
+          # Take the newest chunk directory
+          dirs=sorted([d for d in out.iterdir() if d.is_dir() and d.name.endswith('_chunks')], key=lambda x: x.stat().st_mtime, reverse=True)
+          if not dirs:
+            raise SystemExit('No chunks directory produced')
+          print('DIR='+dirs[0].as_posix())
+          print('name='+dirs[0].name)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+            f.write('dir='+dirs[0].as_posix()+'\n')
+            f.write('name='+dirs[0].name+'\n')
+          PY
+
+      - name: Run transcriber
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          extra=""
+          if [ "${{ steps.inputs.outputs.use_llm }}" = "true" ]; then extra="--use-llm"; fi
+          python transcribe.py --chunks-dir "${{ steps.chunksdir.outputs.dir }}" --model "${{ steps.inputs.outputs.model }}" --language "${{ steps.inputs.outputs.language }}" --word-timestamps $extra
+
+      - name: Upload artifacts (chunks + transcripts + docs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.chunksdir.outputs.name }}
+          path: |
+            ${{ steps.chunksdir.outputs.dir }}/
+          retention-days: 7
