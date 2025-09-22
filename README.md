@@ -231,3 +231,24 @@ Run the transcriber inside Docker:
 docker run --rm -v %cd%:/app -w /app video-chunker:latest \
   python transcribe.py --chunks-dir ./output/<video_name>_chunks --model small --language en
 ```
+
+## Secrets
+
+If you plan to use LLM refinement or diarization, configure the following secrets:
+
+- OPENAI_API_KEY: Enables `--use-llm` in `transcribe.py` to refine minutes and snapshot.
+- HUGGINGFACE_TOKEN: Required if you enable speaker diarization with `pyannote.audio` (future integration).
+
+Local development:
+
+```
+copy .env.example .env
+# Edit .env and fill in values
+```
+
+GitHub Actions:
+
+Set repository secrets in GitHub → Settings → Secrets and variables → Actions:
+
+- OPENAI_API_KEY
+- HUGGINGFACE_TOKEN
