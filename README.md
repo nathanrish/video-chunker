@@ -174,6 +174,18 @@ python services/file_management_service.py --port 5003
 
 ## 🐳 Docker Deployment
 
+### Use prebuilt image (recommended)
+```bash
+docker pull ghcr.io/nathanrish/video-chunker:v1.1.0
+
+# Run the container
+docker run -p 5000:5000 -p 5001:5001 -p 5002:5002 -p 5003:5003 \
+  -v $(pwd)/output:/app/output ghcr.io/nathanrish/video-chunker:v1.1.0
+
+# Check orchestrator health
+curl http://localhost:5000/health
+```
+
 ### Build and Run
 ```bash
 # Build the Docker image
