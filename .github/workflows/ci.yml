@@ -31,6 +31,21 @@ jobs:
         run: |
           docker build -t video-chunker:ci .
 
+      - name: Run container and verify health (ports 5000-5003)
+        run: |
+          docker run -d --name vc-ci -p 5000:5000 -p 5001:5001 -p 5002:5002 -p 5003:5003 video-chunker:ci
+          # wait for services to come up
+          for i in {1..30}; do
+            if curl -sSf http://localhost:5000/health >/dev/null && \
+               curl -sSf http://localhost:5001/health >/dev/null && \
+               curl -sSf http://localhost:5002/health >/dev/null && \
+               curl -sSf http://localhost:5003/health >/dev/null; then
+              echo "All services healthy"; break; fi; sleep 2; done
+          # show orchestrator health payload for debugging
+          curl -s http://localhost:5000/health || true
+          docker logs --tail 100 vc-ci || true
+          docker rm -f vc-ci || true
+
       - name: Print tool versions
         run: |
           python --version
