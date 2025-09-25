@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/nathanrish/video-chunker/actions/workflows/ci.yml/badge.svg)](https://github.com/nathanrish/video-chunker/actions/workflows/ci.yml)
 [![Orchestrator Happy Path](https://github.com/nathanrish/video-chunker/actions/workflows/orchestrator_happy.yml/badge.svg)](https://github.com/nathanrish/video-chunker/actions/workflows/orchestrator_happy.yml)
+[![Render Diagrams](https://github.com/nathanrish/video-chunker/actions/workflows/render_diagrams.yml/badge.svg)](https://github.com/nathanrish/video-chunker/actions/workflows/render_diagrams.yml)
 
 A comprehensive microservices-based system that automatically transcribes videos and generates professional Agile TPM meeting minutes with organized output in dated folders.
 
