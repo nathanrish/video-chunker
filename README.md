@@ -1,5 +1,8 @@
 # Video to Meeting Minutes - Microservices System
 
+[![CI](https://github.com/nathanrish/video-chunker/actions/workflows/ci.yml/badge.svg)](https://github.com/nathanrish/video-chunker/actions/workflows/ci.yml)
+[![Orchestrator Happy Path](https://github.com/nathanrish/video-chunker/actions/workflows/orchestrator_happy.yml/badge.svg)](https://github.com/nathanrish/video-chunker/actions/workflows/orchestrator_happy.yml)
+
 A comprehensive microservices-based system that automatically transcribes videos and generates professional Agile TPM meeting minutes with organized output in dated folders.
 
 ## 🏗️ Architecture Overview
@@ -128,10 +131,13 @@ python services/file_management_service.py --port 5003
 docker build -t video-meeting-minutes .
 
 # Run the container
-docker run -p 5001:5001 -p 5002:5002 -p 5003:5003 -v $(pwd)/output:/app/output video-meeting-minutes
+docker run -p 5000:5000 -p 5001:5001 -p 5002:5002 -p 5003:5003 -v $(pwd)/output:/app/output video-meeting-minutes
 
 # Run with environment variables
-docker run -e OPENAI_API_KEY=your_key -p 5001:5001 -p 5002:5002 -p 5003:5003 video-meeting-minutes
+docker run -e OPENAI_API_KEY=your_key -p 5000:5000 -p 5001:5001 -p 5002:5002 -p 5003:5003 video-meeting-minutes
+
+# Check orchestrator health
+curl http://localhost:5000/health
 ```
 
 ### Docker Compose

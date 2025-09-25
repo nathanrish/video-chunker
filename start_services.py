@@ -11,6 +11,7 @@ import subprocess
 import signal
 import logging
 from pathlib import Path
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -23,7 +24,12 @@ class ServiceManager:
             "transcription": {
                 "script": "services/transcription_service.py",
                 "port": 5001,
-                "args": ["--model", "small", "--device", "auto"]
+                # Allow env overrides for CI/happy path
+                "args": [
+                    "--model", os.environ.get("TRANSCRIPTION_MODEL", "small"),
+                    "--device", os.environ.get("TRANSCRIPTION_DEVICE", "auto"),
+                    "--compute-type", os.environ.get("TRANSCRIPTION_COMPUTE_TYPE", "auto")
+                ]
             },
             "meeting_minutes": {
                 "script": "services/meeting_minutes_service.py",
