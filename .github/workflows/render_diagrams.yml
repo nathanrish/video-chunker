@@ -1,0 +1,36 @@
+name: Render Diagrams
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'diagrams/**/*.mmd'
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install mermaid-cli
+        run: |
+          npm install -g @mermaid-js/mermaid-cli
+
+      - name: Render architecture.mmd to SVG
+        run: |
+          npx -y @mermaid-js/mermaid-cli -i diagrams/architecture.mmd -o diagrams/architecture.svg
+
+      - name: Commit rendered diagrams
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'docs: render diagrams SVG from Mermaid sources'
+          file_pattern: diagrams/*.svg

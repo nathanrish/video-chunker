@@ -18,6 +18,54 @@ This system consists of multiple components:
 - **AI-Powered Analysis**: OpenAI GPT integration for enhanced extraction
 - **Multiple Output Formats**: DOCX, HTML, and JSON
 
+## 🗺️ Architecture Diagram
+
+```mermaid
+flowchart LR
+    subgraph Client
+      U[User / CLI / CI]
+    end
+
+    U -->|HTTP POST /workflows| ORCH[(Orchestrator Service\nPort 5000)]
+
+    subgraph Services
+      T[Transcription Service\nPort 5001]\n:::svc
+      M[Meeting Minutes Service\nPort 5002]\n:::svc
+      F[File Management Service\nPort 5003]\n:::svc
+    end
+
+    ORCH -->|/transcribe| T
+    T -->|segments JSON| ORCH
+
+    ORCH -->|/format-transcript| T
+    T -->|formatted text| ORCH
+
+    ORCH -->|/generate-minutes| M
+    M -->|meeting data JSON| ORCH
+
+    ORCH -->|/create-dated-folder| F
+    ORCH -->|/save-transcript| F
+    ORCH -->|/save-meeting-minutes-docx| F
+    ORCH -->|/save-meeting-minutes-html| F
+    ORCH -->|/copy-video (optional)| F
+    ORCH -->|/create-workflow-summary| F
+
+    subgraph Output
+      O[(output/YYYY-MM-DD_Title/)]
+    end
+
+    F --> O
+    ORCH -->|GET /workflows/{id}| U
+
+    classDef svc fill:#eef,stroke:#446,stroke-width:1px;
+```
+
+The orchestrator coordinates the end-to-end workflow and persists step-by-step results (in-memory by default). Each microservice exposes health endpoints and task-specific APIs. Artifacts (transcript, DOCX, HTML, workflow summary, optional original video) are written under `output/<dated_folder>/`.
+
+If your Markdown renderer does not support Mermaid, see the static diagram:
+
+![Architecture SVG](diagrams/architecture.svg)
+
 ### 🏢 Microservices Architecture
 - **Transcription Service** (Port 5001): Handles video transcription
 - **Meeting Minutes Service** (Port 5002): Generates structured minutes
