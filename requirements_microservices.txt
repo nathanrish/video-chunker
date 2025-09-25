@@ -1,0 +1,18 @@
+# Core dependencies for microservices
+faster-whisper>=1.0.0
+flask>=2.0.0
+requests>=2.25.0
+
+# AI and NLP dependencies
+openai>=1.0.0
+
+# Document generation
+python-docx>=0.8.11
+jinja2>=3.0.0
+
+# Date and time handling
+python-dateutil>=2.8.0
+
+# Optional: Enhanced features
+# pyannote.audio>=3.0.0  # For speaker diarization
+# reportlab>=3.6.0       # For PDF generation
