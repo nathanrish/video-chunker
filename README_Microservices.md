@@ -135,6 +135,20 @@ curl http://localhost:5000/workflows/<workflow_id>
 curl http://localhost:5000/workflows?limit=20
 ```
 
+### Docker: Use prebuilt image (recommended)
+
+```bash
+# Pull the latest release image
+docker pull ghcr.io/nathanrish/video-chunker:v1.1.0
+
+# Run the container with all service ports
+docker run -p 5000:5000 -p 5001:5001 -p 5002:5002 -p 5003:5003 \
+  -v $(pwd)/output:/app/output ghcr.io/nathanrish/video-chunker:v1.1.0
+
+# Check orchestrator health
+curl http://localhost:5000/health
+```
+
 ## 📁 Output Structure
 
 The system creates organized, dated folders with all outputs:
