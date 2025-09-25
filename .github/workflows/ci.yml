@@ -51,6 +51,63 @@ jobs:
           python --version
           ffmpeg -version | head -n 1 || true
 
+  orchestrator-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t video-chunker:e2e .
+
+      - name: Run container
+        run: |
+          docker run -d --name vc-e2e -p 5000:5000 -p 5001:5001 -p 5002:5002 -p 5003:5003 video-chunker:e2e
+
+      - name: Wait for health
+        run: |
+          for i in {1..60}; do \
+            if curl -sSf http://localhost:5000/health >/dev/null && \
+               curl -sSf http://localhost:5001/health >/dev/null && \
+               curl -sSf http://localhost:5002/health >/dev/null && \
+               curl -sSf http://localhost:5003/health >/dev/null; then \
+              echo "Services healthy"; exit 0; \
+            fi; \
+            sleep 2; \
+          done; \
+          echo "Services did not become healthy in time"; docker logs vc-e2e || true; exit 1
+
+      - name: Start workflow (expected to fail due to missing input)
+        id: start
+        run: |
+          payload='{"video_path":"input/nonexistent.mp4","meeting_title":"CI Orchestrator E2E"}'
+          resp=$(curl -s -X POST http://localhost:5000/workflows -H 'Content-Type: application/json' -d "$payload")
+          echo "$resp"
+          wid=$(echo "$resp" | python -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))")
+          echo "workflow_id=$wid" >> "$GITHUB_OUTPUT"
+          test -n "$wid"
+
+      - name: Poll workflow until terminal state
+        env:
+          WID: ${{ steps.start.outputs.workflow_id }}
+        run: |
+          echo "Polling workflow $WID"
+          term=""; for i in {1..60}; do \
+            resp=$(curl -s http://localhost:5000/workflows/$WID); \
+            echo "$resp"; \
+            status=$(echo "$resp" | python -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('status',''))"); \
+            echo "status=$status"; \
+            if [ "$status" = "completed" ] || [ "$status" = "failed" ]; then term=$status; break; fi; \
+            sleep 2; \
+          done; \
+          if [ -z "$term" ]; then echo "Workflow did not reach terminal state"; exit 1; fi; \
+          echo "Terminal state: $term"
+
+      - name: Cleanup container
+        if: always()
+        run: |
+          docker rm -f vc-e2e || true
   # Optional example job leveraging secrets (does not run by default)
   summarize:
     if: github.event_name == 'workflow_dispatch'
