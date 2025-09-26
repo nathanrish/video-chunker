@@ -34,12 +34,13 @@ flowchart LR
       U[User / CLI / CI]
     end
 
-    U -->|HTTP POST /workflows| ORCH[(Orchestrator Service\nPort 5000)]
+    U -->|HTTP POST /workflows| ORCH[("Orchestrator Service<br/>Port 5000")]
 
     subgraph Services
-      T[Transcription Service\nPort 5001]\n:::svc
-      M[Meeting Minutes Service\nPort 5002]\n:::svc
-      F[File Management Service\nPort 5003]\n:::svc
+      T["Transcription Service<br/>Port 5001"]
+      M["Meeting Minutes Service<br/>Port 5002"]
+      F["File Management Service<br/>Port 5003"]
+      API["API Service<br/>Port 5004"]
     end
 
     ORCH -->|/transcribe| T
@@ -55,20 +56,35 @@ flowchart LR
     ORCH -->|/save-transcript| F
     ORCH -->|/save-meeting-minutes-docx| F
     ORCH -->|/save-meeting-minutes-html| F
-    ORCH -->|/copy-video (optional)| F
+    ORCH -->|/copy-video optional| F
     ORCH -->|/create-workflow-summary| F
+    ORCH -->|/zip-output-folder| F
+    ORCH -->|/delete-input-file| F
+
+    subgraph Frontend
+      REACT["React Frontend<br/>Port 3000"]
+    end
+
+    REACT -->|API calls| API
+    API -->|CRUD operations| ORCH
 
     subgraph Output
-      O[(output/YYYY-MM-DD_Title/)]
+      O[("output/YYYY-MM-DD_Title/")]
     end
 
     F --> O
     ORCH -->|GET /workflows/{id}| U
 
-    classDef svc fill:#eef,stroke:#446,stroke-width:1px;
+    classDef service fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef frontend fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef output fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+
+    class T,M,F,API service
+    class REACT frontend
+    class O output
 ```
 
-The orchestrator coordinates the end-to-end workflow and persists step-by-step results (in-memory by default). Each microservice exposes health endpoints and task-specific APIs. Artifacts (transcript, DOCX, HTML, workflow summary, optional original video) are written under `output/<dated_folder>/`.
+The orchestrator coordinates the end-to-end workflow and persists step-by-step results (in-memory by default). Each microservice exposes health endpoints and task-specific APIs. The React frontend provides a modern web interface for video processing and file management. Artifacts (transcript, DOCX, HTML, workflow summary, ZIP archive, optional original video) are written under `output/<dated_folder>/` with automatic cleanup after 24 hours.
 
 If your Markdown renderer does not support Mermaid, see the static diagram:
 
