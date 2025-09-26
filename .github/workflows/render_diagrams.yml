@@ -2,35 +2,151 @@ name: Render Diagrams
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ main, develop ]
     paths:
-      - 'diagrams/**/*.mmd'
-  workflow_dispatch:
+      - 'diagrams/*.mmd'
+      - '*.md'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'diagrams/*.mmd'
+      - '*.md'
 
 jobs:
-  render:
+  render-diagrams:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install mermaid-cli
-        run: |
-          npm install -g @mermaid-js/mermaid-cli
-
-      - name: Render architecture.mmd to SVG
-        run: |
-          npx -y @mermaid-js/mermaid-cli -i diagrams/architecture.mmd -o diagrams/architecture.svg
-
-      - name: Commit rendered diagrams
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 'docs: render diagrams SVG from Mermaid sources'
-          file_pattern: diagrams/*.svg
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install Mermaid CLI
+      run: |
+        npm install -g @mermaid-js/mermaid-cli
+    
+    - name: Create diagrams directory
+      run: |
+        mkdir -p diagrams
+    
+    - name: Render architecture diagram
+      run: |
+        # Extract mermaid diagram from README.md and render
+        if [ -f "README.md" ]; then
+          # Extract mermaid code blocks and render them
+          grep -A 50 "```mermaid" README.md | grep -v "```mermaid" | grep -v "```" > diagrams/architecture.mmd
+          mmdc -i diagrams/architecture.mmd -o diagrams/architecture.svg
+          mmdc -i diagrams/architecture.mmd -o diagrams/architecture.png
+        fi
+    
+    - name: Create frontend architecture diagram
+      run: |
+        cat > diagrams/frontend_architecture.mmd << 'EOF'
+        graph TB
+            subgraph "Browser"
+                U[User Interface]
+            end
+            
+            subgraph "React Frontend"
+                S[Shell App<br/>Port 3000]
+                VP[Video Processing<br/>Module]
+                TM[Transcription<br/>Module]
+                MM[Meeting Minutes<br/>Module]
+                SC[Shared Components]
+            end
+            
+            subgraph "Backend Services"
+                API[API Service<br/>Port 5004]
+                T[Transcription Service<br/>Port 5001]
+                M[Meeting Minutes Service<br/>Port 5002]
+                F[File Management Service<br/>Port 5003]
+            end
+            
+            subgraph "Storage"
+                DB[(SQLite Database)]
+                FS[File System<br/>input/ & output/]
+            end
+            
+            U --> S
+            S --> VP
+            S --> TM
+            S --> MM
+            S --> SC
+            
+            VP --> API
+            TM --> API
+            MM --> API
+            
+            API --> T
+            API --> M
+            API --> F
+            API --> DB
+            
+            T --> FS
+            M --> FS
+            F --> FS
+        EOF
+        
+        mmdc -i diagrams/frontend_architecture.mmd -o diagrams/frontend_architecture.svg
+        mmdc -i diagrams/frontend_architecture.mmd -o diagrams/frontend_architecture.png
+    
+    - name: Create file management workflow diagram
+      run: |
+        cat > diagrams/file_management_workflow.mmd << 'EOF'
+        sequenceDiagram
+            participant U as User
+            participant F as Frontend
+            participant API as API Service
+            participant FM as File Management
+            participant FS as File System
+            
+            U->>F: Upload Video
+            F->>API: Process Video
+            API->>FM: Create Output Folder
+            FM->>FS: Create Dated Folder
+            
+            API->>FM: Save Transcript
+            FM->>FS: Write transcript.txt
+            
+            API->>FM: Save Meeting Minutes
+            FM->>FS: Write .docx & .html
+            
+            API->>FM: Copy Original Video
+            FM->>FS: Copy to Output
+            
+            API->>FM: Create ZIP Archive
+            FM->>FS: Create .zip file
+            
+            API->>FM: Delete Input File
+            FM->>FS: Remove from input/
+            
+            Note over FM: Background Cleanup<br/>Every Hour
+            FM->>FS: Delete Old Folders (>24h)
+        EOF
+        
+        mmdc -i diagrams/file_management_workflow.mmd -o diagrams/file_management_workflow.svg
+        mmdc -i diagrams/file_management_workflow.mmd -o diagrams/file_management_workflow.png
+    
+    - name: Upload diagrams as artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: diagrams
+        path: diagrams/
+        retention-days: 30
+    
+    - name: Commit diagrams (if changed)
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        if [ -n "$(git status --porcelain diagrams/)" ]; then
+          git add diagrams/
+          git commit -m "Update rendered diagrams [skip ci]"
+          git push
+        else
+          echo "No diagram changes to commit"
+        fi

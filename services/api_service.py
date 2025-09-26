@@ -790,6 +790,68 @@ class APIService:
                     "error": f"Meeting minutes file ({format_type}) not found"
                 }), 404
         
+        # File management endpoints
+        @self.app.route('/api/cleanup-status', methods=['GET'])
+        def get_cleanup_status():
+            """Get file cleanup status."""
+            try:
+                # This would typically call the file management service
+                # For now, return a mock response
+                return jsonify({
+                    "success": True,
+                    "data": {
+                        "total_folders": 0,
+                        "old_folders": 0,
+                        "total_size_mb": 0,
+                        "next_cleanup": "Every hour",
+                        "cutoff_hours": 24
+                    }
+                })
+            except Exception as e:
+                logger.error(f"Failed to get cleanup status: {e}")
+                return jsonify({
+                    "success": False,
+                    "error": str(e)
+                }), 500
+
+        @self.app.route('/api/meetings/<meeting_id>/zip', methods=['GET'])
+        def download_meeting_zip(meeting_id):
+            """Download meeting output as zip file."""
+            meeting = self.db.get_meeting(meeting_id)
+            
+            if not meeting:
+                return jsonify({
+                    "success": False,
+                    "error": "Meeting not found"
+                }), 404
+            
+            # Look for zip file in output folder
+            output_folder = Path("output")
+            meeting_folder = None
+            
+            for folder in output_folder.iterdir():
+                if folder.is_dir() and meeting_id in folder.name:
+                    meeting_folder = folder
+                    break
+            
+            if not meeting_folder:
+                return jsonify({
+                    "success": False,
+                    "error": "Meeting output folder not found"
+                }), 404
+            
+            # Look for zip file
+            zip_files = list(meeting_folder.glob("*.zip"))
+            if not zip_files:
+                return jsonify({
+                    "success": False,
+                    "error": "Zip file not found"
+                }), 404
+            
+            zip_file = zip_files[0]  # Take the first zip file found
+            
+            return send_file(zip_file, as_attachment=True, download_name=f"{meeting.title}_output.zip")
+
         # Statistics endpoint
         @self.app.route('/api/stats', methods=['GET'])
         def get_statistics():

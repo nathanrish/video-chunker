@@ -9,7 +9,10 @@ import sys
 import json
 import shutil
 import logging
-from datetime import datetime
+import zipfile
+import threading
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -24,9 +27,18 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class FileManagementService:
-    def __init__(self, base_output_dir: str = "./output"):
+    def __init__(self, base_output_dir: str = "./output", input_dir: str = "./input"):
         self.base_output_dir = Path(base_output_dir)
+        self.input_dir = Path(input_dir)
         self.base_output_dir.mkdir(exist_ok=True)
+        self.input_dir.mkdir(exist_ok=True)
+        
+        # Start background cleanup thread
+        self.cleanup_thread = threading.Thread(target=self._cleanup_old_files, daemon=True)
+        self.cleanup_thread.start()
+        
+        # Track processed files for cleanup
+        self.processed_files = set()
     
     def create_dated_folder(self, meeting_title: str, meeting_date: Optional[datetime] = None) -> str:
         """
@@ -412,6 +424,165 @@ class FileManagementService:
                 "file_size": 0,
                 "error": str(e)
             }
+    
+    def delete_input_file(self, video_path: str) -> Dict[str, Any]:
+        """
+        Delete the input video file after processing.
+        
+        Args:
+            video_path: Path to the input video file
+            
+        Returns:
+            Dictionary with success status
+        """
+        try:
+            file_path = Path(video_path)
+            
+            # Only delete files from the input directory for safety
+            if not str(file_path).startswith(str(self.input_dir)):
+                return {
+                    "success": False,
+                    "error": "File is not in input directory, cannot delete for safety"
+                }
+            
+            if file_path.exists():
+                file_path.unlink()
+                logger.info(f"Input file deleted: {video_path}")
+                return {
+                    "success": True,
+                    "message": f"Input file deleted: {file_path.name}"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "File not found"
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to delete input file: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def zip_output_folder(self, output_folder: str, meeting_title: str) -> Dict[str, Any]:
+        """
+        Create a zip file containing all output files.
+        
+        Args:
+            output_folder: Path to the output folder
+            meeting_title: Title of the meeting for zip filename
+            
+        Returns:
+            Dictionary with success status and zip file path
+        """
+        try:
+            folder_path = Path(output_folder)
+            if not folder_path.exists():
+                return {
+                    "success": False,
+                    "error": "Output folder does not exist"
+                }
+            
+            # Create zip filename
+            safe_title = "".join(c for c in meeting_title if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            safe_title = safe_title.replace(' ', '_')
+            zip_filename = f"{safe_title}_output.zip"
+            zip_path = folder_path / zip_filename
+            
+            # Create zip file
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file_path in folder_path.rglob('*'):
+                    if file_path.is_file() and file_path.name != zip_filename:
+                        # Add file to zip with relative path
+                        arcname = file_path.relative_to(folder_path)
+                        zipf.write(file_path, arcname)
+            
+            logger.info(f"Output folder zipped: {zip_path}")
+            
+            return {
+                "success": True,
+                "zip_path": str(zip_path),
+                "zip_size": zip_path.stat().st_size,
+                "files_zipped": len([f for f in folder_path.rglob('*') if f.is_file() and f.name != zip_filename])
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to zip output folder: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def _cleanup_old_files(self):
+        """
+        Background thread to clean up old output files after 24 hours.
+        """
+        while True:
+            try:
+                current_time = datetime.now()
+                cutoff_time = current_time - timedelta(hours=24)
+                
+                # Clean up old output folders
+                for folder_path in self.base_output_dir.iterdir():
+                    if folder_path.is_dir():
+                        # Check if folder is older than 24 hours
+                        folder_mtime = datetime.fromtimestamp(folder_path.stat().st_mtime)
+                        if folder_mtime < cutoff_time:
+                            try:
+                                shutil.rmtree(folder_path)
+                                logger.info(f"Cleaned up old output folder: {folder_path}")
+                            except Exception as e:
+                                logger.error(f"Failed to clean up folder {folder_path}: {e}")
+                
+                # Sleep for 1 hour before next cleanup
+                time.sleep(3600)
+                
+            except Exception as e:
+                logger.error(f"Error in cleanup thread: {e}")
+                time.sleep(3600)  # Sleep for 1 hour on error
+    
+    def get_cleanup_status(self) -> Dict[str, Any]:
+        """
+        Get status of file cleanup operations.
+        
+        Returns:
+            Dictionary with cleanup status information
+        """
+        try:
+            current_time = datetime.now()
+            cutoff_time = current_time - timedelta(hours=24)
+            
+            total_folders = 0
+            old_folders = 0
+            total_size = 0
+            
+            for folder_path in self.base_output_dir.iterdir():
+                if folder_path.is_dir():
+                    total_folders += 1
+                    folder_mtime = datetime.fromtimestamp(folder_path.stat().st_mtime)
+                    if folder_mtime < cutoff_time:
+                        old_folders += 1
+                    
+                    # Calculate folder size
+                    folder_size = sum(f.stat().st_size for f in folder_path.rglob('*') if f.is_file())
+                    total_size += folder_size
+            
+            return {
+                "success": True,
+                "total_folders": total_folders,
+                "old_folders": old_folders,
+                "total_size_mb": round(total_size / (1024 * 1024), 2),
+                "next_cleanup": "Every hour",
+                "cutoff_hours": 24
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get cleanup status: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
 
 
 # Flask API Service
@@ -588,6 +759,67 @@ if FLASK_AVAILABLE:
                 data['workflow_data']
             )
             
+            return jsonify(result)
+            
+        except Exception as e:
+            logger.error(f"API error: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+
+    @app.route('/delete-input-file', methods=['POST'])
+    def delete_input_file():
+        """Delete input video file after processing."""
+        try:
+            data = request.get_json()
+            
+            if not data or 'video_path' not in data:
+                return jsonify({
+                    "success": False,
+                    "error": "video_path is required"
+                }), 400
+            
+            result = file_service.delete_input_file(data['video_path'])
+            return jsonify(result)
+            
+        except Exception as e:
+            logger.error(f"API error: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+
+    @app.route('/zip-output-folder', methods=['POST'])
+    def zip_output_folder():
+        """Create zip file of output folder."""
+        try:
+            data = request.get_json()
+            
+            if not data or 'output_folder' not in data or 'meeting_title' not in data:
+                return jsonify({
+                    "success": False,
+                    "error": "output_folder and meeting_title are required"
+                }), 400
+            
+            result = file_service.zip_output_folder(
+                data['output_folder'],
+                data['meeting_title']
+            )
+            return jsonify(result)
+            
+        except Exception as e:
+            logger.error(f"API error: {e}")
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 500
+
+    @app.route('/cleanup-status', methods=['GET'])
+    def cleanup_status():
+        """Get cleanup status information."""
+        try:
+            result = file_service.get_cleanup_status()
             return jsonify(result)
             
         except Exception as e:

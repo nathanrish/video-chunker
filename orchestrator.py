@@ -323,6 +323,69 @@ class VideoToMeetingMinutesOrchestrator:
             logger.warning(f"⚠️ Failed to create workflow summary: {e}")
             return {"success": False, "error": str(e)}
     
+    def _zip_output_folder(self, output_folder: str, meeting_title: str) -> Dict[str, Any]:
+        """Create zip file of output folder."""
+        logger.info("📦 Creating zip file of output folder")
+        
+        payload = {
+            "output_folder": output_folder,
+            "meeting_title": meeting_title
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.file_management_service_url}/zip-output-folder",
+                json=payload,
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    logger.info(f"✅ Output folder zipped: {result.get('zip_path')}")
+                    return result
+                else:
+                    logger.warning(f"⚠️ Zip creation failed: {result.get('error')}")
+                    return result
+            else:
+                logger.warning(f"⚠️ File management service error: {response.status_code}")
+                return {"success": False, "error": f"Service error: {response.status_code}"}
+                
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"⚠️ Failed to zip output folder: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _delete_input_file(self, video_path: str) -> Dict[str, Any]:
+        """Delete input video file after processing."""
+        logger.info("🗑️ Deleting input video file")
+        
+        payload = {
+            "video_path": video_path
+        }
+        
+        try:
+            response = requests.post(
+                f"{self.file_management_service_url}/delete-input-file",
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    logger.info(f"✅ Input file deleted: {result.get('message')}")
+                    return result
+                else:
+                    logger.warning(f"⚠️ File deletion failed: {result.get('error')}")
+                    return result
+            else:
+                logger.warning(f"⚠️ File management service error: {response.status_code}")
+                return {"success": False, "error": f"Service error: {response.status_code}"}
+                
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"⚠️ Failed to delete input file: {e}")
+            return {"success": False, "error": str(e)}
+    
     def process_video_to_meeting_minutes(self, 
                                        video_path: str,
                                        meeting_title: str,
@@ -452,6 +515,29 @@ class VideoToMeetingMinutesOrchestrator:
                 "file_path": summary_result.get("file_path")
             })
             
+            # Step 10: Zip output folder
+            step_start = time.time()
+            zip_result = self._zip_output_folder(output_folder, meeting_title)
+            workflow_data["steps"].append({
+                "step": "zip_output_folder",
+                "duration": time.time() - step_start,
+                "success": zip_result["success"],
+                "zip_path": zip_result.get("zip_path"),
+                "zip_size": zip_result.get("zip_size"),
+                "files_zipped": zip_result.get("files_zipped")
+            })
+            
+            # Step 11: Delete input file (if requested)
+            if copy_video:  # Only delete if we copied the video
+                step_start = time.time()
+                delete_result = self._delete_input_file(video_path)
+                workflow_data["steps"].append({
+                    "step": "delete_input_file",
+                    "duration": time.time() - step_start,
+                    "success": delete_result["success"],
+                    "message": delete_result.get("message")
+                })
+            
             # Calculate total duration
             total_duration = time.time() - start_time
             workflow_data["total_duration"] = total_duration
@@ -469,7 +555,9 @@ class VideoToMeetingMinutesOrchestrator:
                     "meeting_minutes_docx": docx_save_result.get("file_path"),
                     "meeting_minutes_html": html_save_result.get("file_path"),
                     "original_video": video_copy_result.get("file_path") if copy_video else None,
-                    "workflow_summary": summary_result.get("file_path")
+                    "workflow_summary": summary_result.get("file_path"),
+                    "zip_file": zip_result.get("zip_path"),
+                    "input_deleted": delete_result.get("success") if copy_video else False
                 }
             }
             

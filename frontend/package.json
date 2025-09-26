@@ -1,0 +1,31 @@
+{
+  "name": "video-meeting-minutes-frontend",
+  "version": "1.0.0",
+  "description": "Micro frontend application for video-to-meeting-minutes system",
+  "private": true,
+  "workspaces": [
+    "shell",
+    "modules/*"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm run install:shell && npm run install:modules",
+    "install:shell": "cd shell && npm install",
+    "install:modules": "cd modules/video-processing && npm install && cd ../transcription && npm install && cd ../meeting-minutes && npm install && cd ../shared && npm install",
+    "dev": "concurrently \"npm run dev:shell\" \"npm run dev:video\" \"npm run dev:transcription\" \"npm run dev:meeting\"",
+    "dev:shell": "cd shell && npm run dev",
+    "dev:video": "cd modules/video-processing && npm run dev",
+    "dev:transcription": "cd modules/transcription && npm run dev",
+    "dev:meeting": "cd modules/meeting-minutes && npm run dev",
+    "build": "npm run build:shell && npm run build:modules",
+    "build:shell": "cd shell && npm run build",
+    "build:modules": "cd modules/video-processing && npm run build && cd ../transcription && npm run build && cd ../meeting-minutes && npm run build && cd ../shared && npm run build",
+    "start": "cd shell && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+}

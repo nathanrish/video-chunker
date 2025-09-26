@@ -4,7 +4,7 @@
 [![Orchestrator Happy Path](https://github.com/nathanrish/video-chunker/actions/workflows/orchestrator_happy.yml/badge.svg)](https://github.com/nathanrish/video-chunker/actions/workflows/orchestrator_happy.yml)
 [![Render Diagrams](https://github.com/nathanrish/video-chunker/actions/workflows/render_diagrams.yml/badge.svg)](https://github.com/nathanrish/video-chunker/actions/workflows/render_diagrams.yml)
 
-A comprehensive microservices-based system that automatically transcribes videos and generates professional Agile TPM meeting minutes with organized output in dated folders.
+A comprehensive microservices-based system with React.js frontend that automatically transcribes videos and generates professional Agile TPM meeting minutes with intelligent file management and organized output.
 
 ## 🏗️ Architecture Overview
 
@@ -13,11 +13,18 @@ This system consists of multiple components:
 ### 🎬 Video Processing
 - **Video Splitter**: Splits large videos into manageable chunks
 - **Video Transcription**: Converts video to text using faster-whisper
+- **React.js Frontend**: Modern web interface with Material-UI
 
 ### 📋 Meeting Minutes Generation
 - **Agile TPM Format**: Professional Technical Program Manager style minutes
 - **AI-Powered Analysis**: OpenAI GPT integration for enhanced extraction
 - **Multiple Output Formats**: DOCX, HTML, and JSON
+
+### 🗂️ File Management
+- **Automatic Cleanup**: Input files deleted after processing
+- **ZIP Archives**: Output files compressed into single downloads
+- **Auto-Purge**: Files automatically deleted after 24 hours
+- **Storage Monitoring**: Real-time disk usage and cleanup status
 
 ## 🗺️ Architecture Diagram
 
@@ -70,7 +77,9 @@ If your Markdown renderer does not support Mermaid, see the static diagram:
 ### 🏢 Microservices Architecture
 - **Transcription Service** (Port 5001): Handles video transcription
 - **Meeting Minutes Service** (Port 5002): Generates structured minutes
-- **File Management Service** (Port 5003): Manages output organization
+- **File Management Service** (Port 5003): Manages output organization and cleanup
+- **API Service** (Port 5004): REST API for frontend integration
+- **React Frontend** (Port 3000): Modern web interface with micro frontend architecture
 - **Orchestrator**: Coordinates the entire workflow
 
 ## 🚀 Quick Start
@@ -82,21 +91,39 @@ If your Markdown renderer does not support Mermaid, see the static diagram:
 git clone <repository-url>
 cd video_chunks
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements_microservices.txt
+
+# Install frontend dependencies
+cd frontend
+npm run install:all
 ```
 
-### 2. Start Microservices
+### 2. Start Backend Services
 
 ```bash
-# Start all services
+# Start all backend services
 python start_services.py
 
 # With AI features (optional)
 python start_services.py --api-key your_openai_key
 ```
 
-### 3. Run Complete Workflow
+### 3. Start Frontend
+
+```bash
+# Start React frontend (in another terminal)
+cd frontend
+npm run dev
+```
+
+### 4. Access the Application
+
+- **Frontend**: http://localhost:3000
+- **API**: http://localhost:5004
+- **Health Check**: http://localhost:5004/health
+
+### 5. Alternative: Command Line Workflow
 
 ```bash
 # Basic usage
@@ -117,8 +144,11 @@ output/
     ├── meeting_minutes.docx             # Professional DOCX minutes
     ├── meeting_minutes.html             # Web-viewable HTML minutes
     ├── original_meeting.mp4             # Copy of original video
-    └── workflow_summary.json            # Processing details
+    ├── workflow_summary.json            # Processing details
+    └── Team_Meeting_output.zip          # ✨ All files in one archive
 ```
+
+**Note**: Input files are automatically deleted after processing, and output files are purged after 24 hours.
 
 ## 🎯 Features
 
@@ -142,6 +172,20 @@ output/
 - **Executive Summaries**: AI-generated program status
 - **Risk Assessment**: Intelligent risk categorization
 - **Action Item Extraction**: Automatic task identification
+
+### 🎨 Modern Web Interface
+- **React.js Frontend**: Modern, responsive web application
+- **Material-UI Design**: Professional, accessible interface
+- **Micro Frontend Architecture**: Scalable, maintainable codebase
+- **Real-time Status**: Live updates on processing progress
+- **File Management Dashboard**: Monitor disk usage and cleanup status
+
+### 🗂️ Intelligent File Management
+- **Automatic Cleanup**: Input files deleted after successful processing
+- **ZIP Archives**: Single-download option for all meeting files
+- **Auto-Purge**: Output files automatically deleted after 24 hours
+- **Storage Monitoring**: Real-time disk usage and cleanup statistics
+- **Safety Features**: Protected deletion with path validation
 
 ## 🔧 Service Management
 
@@ -246,6 +290,51 @@ POST /create-dated-folder      # Create output folder
 POST /save-transcript          # Save transcript
 POST /save-meeting-minutes-docx # Save DOCX
 POST /save-meeting-minutes-html # Save HTML
+POST /delete-input-file        # Delete input video file
+POST /zip-output-folder        # Create ZIP archive
+GET  /cleanup-status           # Get cleanup statistics
+```
+
+### API Service (Port 5004)
+```bash
+GET  /health                   # Health check
+GET  /api/meetings             # List meetings
+POST /api/meetings             # Create meeting
+GET  /api/meetings/{id}        # Get meeting details
+PUT  /api/meetings/{id}        # Update meeting
+DELETE /api/meetings/{id}      # Delete meeting
+GET  /api/meetings/{id}/zip    # Download ZIP archive
+GET  /api/cleanup-status       # Get cleanup status
+GET  /api/stats                # Get statistics
+```
+
+## 🎨 Frontend Application
+
+### React.js Micro Frontend Architecture
+- **Shell Application**: Main container with routing and navigation
+- **Video Processing Module**: Upload and processing interface
+- **Transcription Module**: View and manage transcriptions
+- **Meeting Minutes Module**: Generate and view meeting minutes
+- **Shared Components**: Reusable UI components and utilities
+
+### Key Features
+- **Drag & Drop Upload**: Intuitive file upload interface
+- **Real-time Progress**: Live updates during processing
+- **File Management Dashboard**: Monitor disk usage and cleanup
+- **Responsive Design**: Works on all device sizes
+- **Modern UI**: Material-UI design system
+
+### Development
+```bash
+# Install dependencies
+cd frontend
+npm run install:all
+
+# Start development servers
+npm run dev
+
+# Build for production
+npm run build
 ```
 
 ## 📊 Usage Examples

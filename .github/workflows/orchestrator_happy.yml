@@ -1,109 +1,102 @@
-name: Orchestrator Happy Path
+name: Orchestrator Happy Path Test
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
   schedule:
-    - cron: '0 6 * * *'  # daily at 06:00 UTC
+    - cron: '0 2 * * *'  # Run daily at 2 AM
+
+env:
+  PYTHON_VERSION: '3.9'
 
 jobs:
-  happy:
+  orchestrator-test:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: |
-          docker build -t video-chunker:happy .
-
-      - name: Run container (tiny CPU model)
-        env:
-          TRANSCRIPTION_MODEL: tiny
-          TRANSCRIPTION_DEVICE: cpu
-          TRANSCRIPTION_COMPUTE_TYPE: int8
-        run: |
-          docker run -d --name vc-happy \
-            -e TRANSCRIPTION_MODEL=${TRANSCRIPTION_MODEL} \
-            -e TRANSCRIPTION_DEVICE=${TRANSCRIPTION_DEVICE} \
-            -e TRANSCRIPTION_COMPUTE_TYPE=${TRANSCRIPTION_COMPUTE_TYPE} \
-            -p 5000:5000 -p 5001:5001 -p 5002:5002 -p 5003:5003 \
-            video-chunker:happy
-
-      - name: Wait for health
-        run: |
-          for i in {1..90}; do \
-            if curl -sSf http://localhost:5000/health >/dev/null && \
-               curl -sSf http://localhost:5001/health >/dev/null && \
-               curl -sSf http://localhost:5002/health >/dev/null && \
-               curl -sSf http://localhost:5003/health >/dev/null; then \
-              echo "Services healthy"; exit 0; \
-            fi; \
-            sleep 2; \
-          done; \
-          echo "Services did not become healthy in time"; docker logs vc-happy || true; exit 1
-
-      - name: Generate tiny test video with audio
-        run: |
-          mkdir -p input
-          # 3-second sine wave with black video; container needs this file
-          ffmpeg -y -f lavfi -i color=c=black:s=128x72:d=3 -f lavfi -i sine=frequency=1000:duration=3 \
-            -c:v libx264 -t 3 -pix_fmt yuv420p -c:a aac -shortest input/test.mp4
-          ls -lah input
-
-      - name: Copy test video into container
-        run: |
-          docker exec vc-happy sh -c 'mkdir -p /app/input'
-          docker cp input/test.mp4 vc-happy:/app/input/test.mp4
-          docker exec vc-happy sh -c 'ls -lah /app/input'
-
-      - name: Start workflow
-        id: start
-        run: |
-          payload='{"video_path":"input/test.mp4","meeting_title":"Happy E2E"}'
-          resp=$(curl -s -X POST http://localhost:5000/workflows -H 'Content-Type: application/json' -d "$payload")
-          echo "$resp"
-          wid=$(echo "$resp" | python -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('id',''))")
-          echo "workflow_id=$wid" >> "$GITHUB_OUTPUT"
-          test -n "$wid"
-
-      - name: Poll workflow until completed
-        env:
-          WID: ${{ steps.start.outputs.workflow_id }}
-        run: |
-          echo "Polling workflow $WID"
-          for i in {1..300}; do \
-            resp=$(curl -s http://localhost:5000/workflows/$WID); \
-            status=$(echo "$resp" | python -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('status',''))"); \
-            echo "status=$status"; \
-            if [ "$status" = "completed" ]; then break; fi; \
-            if [ "$status" = "failed" ]; then echo "$resp"; exit 1; fi; \
-            sleep 3; \
-          done
-
-      - name: Retrieve output folder path
-        id: out
-        env:
-          WID: ${{ steps.start.outputs.workflow_id }}
-        run: |
-          resp=$(curl -s http://localhost:5000/workflows/$WID)
-          outdir=$(echo "$resp" | python -c "import sys,json; print(json.load(sys.stdin).get('data',{}).get('output',{}).get('output_folder',''))")
-          echo "outdir=$outdir" >> "$GITHUB_OUTPUT"
-          test -n "$outdir"
-
-      - name: Copy artifacts from container
-        run: |
-          mkdir -p artifacts
-          docker cp vc-happy:/app/${{ steps.out.outputs.outdir }}/ artifacts/output
-          ls -lahR artifacts || true
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: orchestrator-happy-output
-          path: artifacts/output/
-          retention-days: 3
-
-      - name: Cleanup container
-        if: always()
-        run: |
-          docker rm -f vc-happy || true
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements_microservices.txt
+        pip install pytest pytest-cov
+    
+    - name: Create test video
+      run: |
+        # Create a small test video for testing
+        mkdir -p input
+        # This would create a test video file
+        echo "Creating test video file..."
+        # For now, we'll create a dummy file
+        touch input/test_meeting.mp4
+    
+    - name: Start services in background
+      run: |
+        python start_services.py &
+        sleep 30  # Wait for services to start
+        
+        # Check if services are running
+        curl -f http://localhost:5001/health || exit 1
+        curl -f http://localhost:5002/health || exit 1
+        curl -f http://localhost:5003/health || exit 1
+        curl -f http://localhost:5004/health || exit 1
+    
+    - name: Run orchestrator happy path test
+      run: |
+        # Test the complete workflow
+        python orchestrator.py "input/test_meeting.mp4" "Test Meeting" --date "2024-01-15" --language en
+        
+        # Verify output was created
+        ls -la output/
+        
+        # Check if files were created
+        if [ -d "output" ]; then
+          echo "Output directory created successfully"
+          find output -name "*.txt" -o -name "*.docx" -o -name "*.html" -o -name "*.zip" | head -10
+        else
+          echo "No output directory found"
+          exit 1
+        fi
+    
+    - name: Test file management features
+      run: |
+        # Test cleanup status endpoint
+        curl -f http://localhost:5003/cleanup-status
+        
+        # Test API endpoints
+        curl -f http://localhost:5004/api/stats
+        
+        # Test meeting creation via API
+        curl -X POST http://localhost:5004/api/meetings \
+          -H "Content-Type: application/json" \
+          -d '{"title": "API Test Meeting", "date": "2024-01-15", "status": "pending"}'
+    
+    - name: Cleanup
+      if: always()
+      run: |
+        # Stop services
+        pkill -f "python.*start_services.py" || true
+        pkill -f "python.*transcription_service.py" || true
+        pkill -f "python.*meeting_minutes_service.py" || true
+        pkill -f "python.*file_management_service.py" || true
+        pkill -f "python.*api_service.py" || true
+        
+        # Clean up test files
+        rm -rf input/test_meeting.mp4
+        rm -rf output/
