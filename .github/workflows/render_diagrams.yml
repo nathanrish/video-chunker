@@ -2,12 +2,12 @@ name: Render Diagrams
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ master, main, develop ]
     paths:
       - 'diagrams/*.mmd'
       - '*.md'
   pull_request:
-    branches: [ main, develop ]
+    branches: [ master, main, develop ]
     paths:
       - 'diagrams/*.mmd'
       - '*.md'
